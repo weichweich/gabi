@@ -94,15 +94,19 @@ func getUndisclosedAttributes(disclosedAttributes []int, numAttributes int) []in
 }
 
 // CreateDisclosureProof creates a disclosure proof (ProofD) voor the provided
-// indices of disclosed attributes.
+// indices of disclosed attributes. Implements the idemix ProveCL protocol
 func (ic *Credential) CreateDisclosureProof(disclosedAttributes []int, context, nonce1 *big.Int) *ProofD {
 	undisclosedAttributes := getUndisclosedAttributes(disclosedAttributes, len(ic.Attributes))
 
+	// 1. randomize signature
 	randSig := ic.Signature.Randomize(ic.Pk)
 
+	// 2. Compute t-values
+	// 2.1 chose random integers
 	eCommit, _ := common.RandomBigInt(ic.Pk.Params.LeCommit)
 	vCommit, _ := common.RandomBigInt(ic.Pk.Params.LvCommit)
 
+	// 2.2
 	aCommits := make(map[int]*big.Int)
 	for _, v := range undisclosedAttributes {
 		aCommits[v], _ = common.RandomBigInt(ic.Pk.Params.LmCommit)
@@ -122,12 +126,16 @@ func (ic *Credential) CreateDisclosureProof(disclosedAttributes []int, context, 
 
 	c := common.HashCommit([]*big.Int{context, randSig.A, Z, nonce1}, false)
 
+	// 4. Compute the s-values.
+	// 4.1
 	ePrime := new(big.Int).Sub(randSig.E, new(big.Int).Lsh(big.NewInt(1), ic.Pk.Params.Le-1))
 	eResponse := new(big.Int).Mul(c, ePrime)
 	eResponse.Add(eCommit, eResponse)
+	// 4.2
 	vResponse := new(big.Int).Mul(c, randSig.V)
 	vResponse.Add(vCommit, vResponse)
 
+	// 4.3
 	aResponses := make(map[int]*big.Int)
 	for _, v := range undisclosedAttributes {
 		exp := ic.Attributes[v]
