@@ -1,6 +1,6 @@
 package keyproof
 
-import "github.com/privacybydesign/gabi/internal/common"
+import "github.com/privacybydesign/gabi/pkg/common"
 import "github.com/privacybydesign/gabi/big"
 
 type SquareFreeProof struct {

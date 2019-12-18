@@ -16,7 +16,7 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/privacybydesign/gabi/big"
-	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/pkg/common"
 	"github.com/privacybydesign/gabi/revocation"
 	"github.com/privacybydesign/gabi/safeprime"
 	"github.com/privacybydesign/gabi/signed"
@@ -170,7 +170,7 @@ func (privk *PrivateKey) RevocationSupported() bool {
 
 func GenerateRevocationKeypair(privk *PrivateKey, pubk *PublicKey) error {
 	if pubk.RevocationSupported() || privk.RevocationSupported() {
-		return errors.New("revocation parameters already present")
+		return nil
 	}
 
 	key, err := signed.GenerateKey()

@@ -74,7 +74,7 @@ import (
 	"github.com/go-errors/errors"
 	"github.com/multiformats/go-multihash"
 	"github.com/privacybydesign/gabi/big"
-	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/pkg/common"
 	"github.com/privacybydesign/gabi/signed"
 )
 
