@@ -2,7 +2,7 @@ package keyproof
 
 import "testing"
 import "encoding/json"
-import "github.com/privacybydesign/gabi/internal/common"
+import "github.com/privacybydesign/gabi/pkg/common"
 import "github.com/privacybydesign/gabi/big"
 
 func TestQuasiSafePrimeProductCycle(t *testing.T) {
