@@ -40,7 +40,7 @@ type PrivateKey struct {
 	QPrime     *big.Int `xml:"Elements>qPrime"`
 	ECDSA      string
 
-	nonrevSk *revocation.PrivateKey
+	NonrevSk *revocation.PrivateKey
 }
 
 // NewPrivateKey creates a new issuer private key using the provided parameters.
@@ -141,7 +141,7 @@ func (privk *PrivateKey) WriteToFile(filename string, forceOverwrite bool) (int6
 }
 
 func (privk *PrivateKey) RevocationKey() (*revocation.PrivateKey, error) {
-	if privk.nonrevSk == nil {
+	if privk.NonrevSk == nil {
 		if !privk.RevocationSupported() {
 			return nil, errors.New("private key does not support revocation")
 		}
@@ -153,7 +153,7 @@ func (privk *PrivateKey) RevocationKey() (*revocation.PrivateKey, error) {
 		if err != nil {
 			return nil, err
 		}
-		privk.nonrevSk = &revocation.PrivateKey{
+		privk.NonrevSk = &revocation.PrivateKey{
 			Counter: privk.Counter,
 			ECDSA:   key,
 			P:       privk.PPrime,
@@ -161,11 +161,11 @@ func (privk *PrivateKey) RevocationKey() (*revocation.PrivateKey, error) {
 			N:       new(big.Int).Mul(privk.P, privk.Q),
 		}
 	}
-	return privk.nonrevSk, nil
+	return privk.NonrevSk, nil
 }
 
 func (privk *PrivateKey) RevocationSupported() bool {
-	return len(privk.ECDSA) > 0
+	return len(privk.ECDSA) > 0 && privk.NonrevSk != nil
 }
 
 func GenerateRevocationKeypair(privk *PrivateKey, pubk *PublicKey) error {
@@ -296,7 +296,7 @@ type PublicKey struct {
 	Issuer      string            `xml:"-"`
 	ECDSA       string
 
-	nonrevPk *revocation.PublicKey
+	NonrevPk *revocation.PublicKey
 }
 
 // NewPublicKey creates and returns a new public key based on the provided parameters.
@@ -363,7 +363,7 @@ func NewPublicKeyFromFile(filename string) (*PublicKey, error) {
 }
 
 func (pubk *PublicKey) RevocationKey() (*revocation.PublicKey, error) {
-	if pubk.nonrevPk == nil {
+	if pubk.NonrevPk == nil {
 		if !pubk.RevocationSupported() {
 			return nil, errors.New("public key does not support revocation")
 		}
@@ -378,17 +378,17 @@ func (pubk *PublicKey) RevocationKey() (*revocation.PublicKey, error) {
 		g := revocation.NewQrGroup(pubk.N)
 		g.G = pubk.G
 		g.H = pubk.H
-		pubk.nonrevPk = &revocation.PublicKey{
+		pubk.NonrevPk = &revocation.PublicKey{
 			Counter: pubk.Counter,
 			Group:   &g,
 			ECDSA:   dsakey,
 		}
 	}
-	return pubk.nonrevPk, nil
+	return pubk.NonrevPk, nil
 }
 
 func (pubk *PublicKey) RevocationSupported() bool {
-	return pubk.G != nil && pubk.H != nil && pubk.T != nil && len(pubk.ECDSA) > 0
+	return pubk.G != nil && pubk.H != nil && pubk.T != nil && len(pubk.ECDSA) > 0 && pubk.NonrevPk != nil
 }
 
 // Print prints the key to stdout.
