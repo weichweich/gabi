@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/privacybydesign/gabi/big"
-	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/pkg/common"
 	"github.com/privacybydesign/gabi/revocation"
 	"github.com/privacybydesign/gabi/safeprime"
 	"github.com/stretchr/testify/require"
