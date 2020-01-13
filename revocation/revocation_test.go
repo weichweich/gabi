@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/privacybydesign/gabi/big"
-	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/pkg/common"
 	"github.com/privacybydesign/gabi/keyproof"
 	"github.com/privacybydesign/gabi/safeprime"
 	"github.com/privacybydesign/gabi/signed"
