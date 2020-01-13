@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/privacybydesign/gabi/big"
-	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/pkg/common"
 )
 
 // RepresentToPublicKey returns a representation of the given exponents in terms of the R bases

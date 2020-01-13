@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/privacybydesign/gabi/big"
-	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/pkg/common"
 )
 
 type (
