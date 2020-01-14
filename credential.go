@@ -97,7 +97,7 @@ func getUndisclosedAttributes(disclosedAttributes []int, numAttributes int) []in
 // CreateDisclosureProof creates a disclosure proof (ProofD) voor the provided
 // indices of disclosed attributes.
 func (ic *Credential) CreateDisclosureProof(disclosedAttributes []int, nonrev bool, context, nonce1 *big.Int) (*ProofD, error) {
-	builder, err := ic.CreateDisclosureProofBuilder(disclosedAttributes, false)
+	builder, err := ic.CreateDisclosureProofBuilder(disclosedAttributes, nonrev)
 	if err != nil {
 		return nil, err
 	}
