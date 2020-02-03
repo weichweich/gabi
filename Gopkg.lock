@@ -10,12 +10,20 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:a2c1d0e43bd3baaa071d1b9ed72c27d78169b2b269f71c105ac4ba34b1be4a39"
+  digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
   pruneopts = "UT"
-  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
-  version = "v1.1.0"
+  revision = "8991bc29aa16c548c550c7ff78260e27b9ab7c73"
+  version = "v1.1.1"
+
+[[projects]]
+  digest = "1:0886f4871903067916897c67caeb787f81c9a155391da901aa25f26802953ec6"
+  name = "github.com/fxamacker/cbor"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "6faee5e1f8b6270f9bdcfefbc9bdfa8c026de629"
+  version = "v1.5.0"
 
 [[projects]]
   digest = "1:aacef5f5e45685f2aeda5534d0a750dee6859de7e9088cdd06192787bb01ae6d"
@@ -26,6 +34,46 @@
   version = "v1.0.1"
 
 [[projects]]
+  branch = "master"
+  digest = "1:130cefe87d7eeefc824978dcb78e35672d4c49a11f25c153fbf0cfd952756fa3"
+  name = "github.com/minio/blake2b-simd"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
+
+[[projects]]
+  digest = "1:0d8b29788bd5eef02a1d7cff49bc557d66dccbfe5c386b6422d8a4e4752a5e14"
+  name = "github.com/minio/sha256-simd"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "6de4475307716de15b286880ff321c9547086fdd"
+  version = "v0.1.1"
+
+[[projects]]
+  digest = "1:b6299badabd66eaede0651e2eaede106d8298b25564e4a7f23e335471d3e5a35"
+  name = "github.com/mr-tron/base58"
+  packages = ["base58"]
+  pruneopts = "UT"
+  revision = "b1dd383fd2c02d7933db93f157e339f1899b5163"
+  version = "v1.1.3"
+
+[[projects]]
+  digest = "1:9b6ec330cdda76d7b8fb3cb4238d7ab8ee98f672859fcb3dcc7dd395312f5770"
+  name = "github.com/multiformats/go-multihash"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "6b39927dce4869bc1726861b65ada415ee1f7fc7"
+  version = "v0.0.13"
+
+[[projects]]
+  digest = "1:6be8092c93e6eb9ec606a153d16fa042e087be8be9a91f49515dfe0d0b504a5f"
+  name = "github.com/multiformats/go-varint"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "99465703c4a9cf53a0235e52608cb055e9d39c29"
+  version = "v0.0.5"
+
+[[projects]]
   digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
   name = "github.com/pmezard/go-difflib"
   packages = ["difflib"]
@@ -34,22 +82,67 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:c40d65817cdd41fac9aa7af8bed56927bb2d6d47e4fea566a74880f5c2b1c41e"
+  digest = "1:919bb3aa6d9d0b67648c219fa4925312bc3c2872da19e818fa769e9c97a2b643"
+  name = "github.com/spaolacci/murmur3"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "9f5d223c60793748f04a9d5b4b4eacddfc1f755d"
+  version = "v1.1"
+
+[[projects]]
+  digest = "1:99d32780e5238c2621fff621123997c3e3cca96db8be13179013aea77dfab551"
   name = "github.com/stretchr/testify"
   packages = [
     "assert",
     "require",
   ]
   pruneopts = "UT"
-  revision = "f35b8ab0b5a2cef36673838d662e249dd9c94686"
-  version = "v1.2.2"
+  revision = "221dbe5ed46703ee255b1da0dec05086f5035f62"
+  version = "v1.4.0"
+
+[[projects]]
+  digest = "1:93f4c18679de6a3e34b9a3de10c5436e9888b5879ed7de0520749e1eac546bd8"
+  name = "github.com/x448/float16"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "cb9afec31f2649663ebb64da5c6c32c3d365c3ca"
+  version = "v0.8.4"
+
+[[projects]]
+  branch = "master"
+  digest = "1:655984762d98b0e453af28cb6078d33479080784efb056ba7f365b5d4814d3fe"
+  name = "golang.org/x/crypto"
+  packages = [
+    "blake2s",
+    "sha3",
+  ]
+  pruneopts = "UT"
+  revision = "a0c6ece9d31a0ebfbd3ddf2d290cfb1265ba47c7"
+
+[[projects]]
+  branch = "master"
+  digest = "1:e1f7cd50bff4fa30d44c45fef943ade1959587a5adc8e7943c2e5d806140679f"
+  name = "golang.org/x/sys"
+  packages = ["cpu"]
+  pruneopts = "UT"
+  revision = "d101bd2416d505c0448a6ce8a282482678040a89"
+
+[[projects]]
+  digest = "1:55b110c99c5fdc4f14930747326acce56b52cfce60b24b1c03ef686ac0e46bb1"
+  name = "gopkg.in/yaml.v2"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "53403b58ad1b561927d19068c655246f2db79d48"
+  version = "v2.2.8"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
     "github.com/bwesterb/go-exptable",
+    "github.com/fxamacker/cbor",
     "github.com/go-errors/errors",
+    "github.com/multiformats/go-multihash",
     "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
   ]
