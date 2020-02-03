@@ -152,8 +152,11 @@ type (
 )
 
 const (
-	AccumulatorStartIndex uint64 = 1
+	// AccumulatorStartIndex is the index of the very first accumulator
+	AccumulatorStartIndex uint64 = 0
 
+	// HashAlgorithm specifies the hashing algorithm used to store a hash of the
+	// parent accumulator
 	HashAlgorithm = multihash.SHA2_256
 )
 
