@@ -8,6 +8,8 @@ import (
 	"crypto/rand"
 
 	"github.com/privacybydesign/gabi/big"
+	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/revocation"
 )
 
 // Issuer holds the key material for a credential issuer.
@@ -26,22 +28,26 @@ func NewIssuer(sk *PrivateKey, pk *PublicKey, context *big.Int) *Issuer {
 // the IssueCommitmentMessage provided. Note that this function DOES NOT check
 // the proofs containted in the IssueCommitmentMessage! That needs to be done at
 // a higher level!
-func (i *Issuer) IssueSignature(U *big.Int, attributes []*big.Int, nonce2 *big.Int) (*IssueSignatureMessage, error) {
-	signature, err := i.signCommitmentAndAttributes(U, attributes)
+func (i *Issuer) IssueSignature(U *big.Int, attributes []*big.Int, witness *revocation.Witness, nonce2 *big.Int) (*IssueSignatureMessage, error) {
+	var revocationAttr *big.Int
+	if witness != nil {
+		revocationAttr = witness.E
+	}
+	signature, err := i.signCommitmentAndAttributes(U, attributes, revocationAttr)
 	if err != nil {
 		return nil, err
 	}
 	proof := i.proveSignature(signature, nonce2)
-	return &IssueSignatureMessage{Signature: signature, Proof: proof}, nil
+	return &IssueSignatureMessage{Signature: signature, Proof: proof, NonRevocationWitness: witness}, nil
 }
 
 // signCommitmentAndAttributes produces a (partial) signature on the commitment
 // and the attributes. The signature by itself does not verify because the
 // commitment contains a blinding factor that needs to be taken into account
 // when verifying the signature.
-func (i *Issuer) signCommitmentAndAttributes(U *big.Int, attributes []*big.Int) (*CLSignature, error) {
+func (i *Issuer) signCommitmentAndAttributes(U *big.Int, attributes []*big.Int, revocationAttr *big.Int) (*CLSignature, error) {
 	// Skip the first generator
-	return signMessageBlockAndCommitment(i.Sk, i.Pk, U, append([]*big.Int{bigZERO}, attributes...))
+	return signMessageBlockAndCommitment(i.Sk, i.Pk, U, append([]*big.Int{big.NewInt(0)}, attributes...), revocationAttr)
 }
 
 // randomElementMultiplicativeGroup returns a random element in the
@@ -49,7 +55,7 @@ func (i *Issuer) signCommitmentAndAttributes(U *big.Int, attributes []*big.Int) 
 func randomElementMultiplicativeGroup(modulus *big.Int) *big.Int {
 	r := big.NewInt(0)
 	t := new(big.Int)
-	for r.Sign() <= 0 || t.GCD(nil, nil, r, modulus).Cmp(bigONE) != 0 {
+	for r.Sign() <= 0 || t.GCD(nil, nil, r, modulus).Cmp(big.NewInt(1)) != 0 {
 		// TODO: for memory/cpu efficiency re-use r's memory. See Go's
 		// implementation for finding a random prime.
 		r, _ = big.RandInt(rand.Reader, modulus)
@@ -66,7 +72,7 @@ func (i *Issuer) proveSignature(signature *CLSignature, nonce2 *big.Int) *ProofS
 	eCommit := randomElementMultiplicativeGroup(groupModulus)
 	ACommit := new(big.Int).Exp(Q, eCommit, i.Pk.N)
 
-	c := hashCommit([]*big.Int{i.Context, Q, signature.A, nonce2, ACommit}, false)
+	c := common.HashCommit([]*big.Int{i.Context, Q, signature.A, nonce2, ACommit}, false)
 	eResponse := new(big.Int).Mul(c, d)
 	eResponse.Sub(eCommit, eResponse).Mod(eResponse, groupModulus)
 

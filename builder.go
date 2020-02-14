@@ -5,23 +5,24 @@
 package gabi
 
 import (
-	"crypto/sha256"
-	"encoding/asn1"
 	"encoding/json"
-	"errors"
-	gobig "math/big"
+	"time"
+
+	"github.com/go-errors/errors"
 
 	"github.com/privacybydesign/gabi/big"
+	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/revocation"
 )
 
 // IssueCommitmentMessage encapsulates the messages sent by the receiver to the
 // issuer in the second step of the issuance protocol.
 type IssueCommitmentMessage struct {
-	U          *big.Int          `json:"U"`
+	U          *big.Int          `json:"U,omitempty"`
 	Nonce2     *big.Int          `json:"n_2"`
 	Proofs     ProofList         `json:"combinedProofs"`
-	ProofPjwt  string            `json:"proofPJwt"`
-	ProofPjwts map[string]string `json:"proofPJwts"`
+	ProofPjwt  string            `json:"proofPJwt,omitempty"`
+	ProofPjwts map[string]string `json:"proofPJwts,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler (json's default unmarshaler
@@ -58,13 +59,14 @@ func (pl *ProofList) UnmarshalJSON(bytes []byte) error {
 // IssueSignatureMessage encapsulates the messages sent from the issuer to the
 // reciver in the final step of the issuance protocol.
 type IssueSignatureMessage struct {
-	Proof     *ProofS      `json:"proof"`
-	Signature *CLSignature `json:"signature"`
+	Proof                *ProofS             `json:"proof"`
+	Signature            *CLSignature        `json:"signature"`
+	NonRevocationWitness *revocation.Witness `json:"nonrev,omitempty"`
 }
 
 // commitmentToSecret produces a commitment to the provided secret
 func commitmentToSecret(pk *PublicKey, secret *big.Int) (vPrime, U *big.Int) {
-	vPrime, _ = RandomBigInt(pk.Params.LvPrime)
+	vPrime, _ = common.RandomBigInt(pk.Params.LvPrime)
 	// U = S^{vPrime} * R_0^{s}
 	Sv := new(big.Int).Exp(pk.S, vPrime, pk.N)
 	R0s := new(big.Int).Exp(pk.R[0], secret, pk.N)
@@ -136,49 +138,32 @@ func (b *CredentialBuilder) ConstructCredential(msg *IssueSignatureMessage, attr
 	exponents[0] = b.secret
 	copy(exponents[1:], attributes)
 
-	if !signature.Verify(b.pk, exponents) {
+	var revocationAttr *big.Int
+	if msg.NonRevocationWitness != nil {
+		revocationAttr = msg.NonRevocationWitness.E
+		rpk, err := b.pk.RevocationKey()
+		if err != nil {
+			return nil, err
+		}
+		if err = msg.NonRevocationWitness.Verify(rpk); err != nil {
+			return nil, err
+		}
+		msg.NonRevocationWitness.Updated = time.Unix(msg.NonRevocationWitness.SignedAccumulator.Accumulator.Time, 0)
+	}
+	if !signature.Verify(b.pk, exponents, revocationAttr) {
 		return nil, ErrIncorrectAttributeSignature
 	}
-	return &Credential{Pk: b.pk, Signature: signature, Attributes: exponents}, nil
-}
-
-// intHashSha256 is a utility function compute the sha256 hash over a byte array
-// and return this hash as a big.Int.
-func intHashSha256(input []byte) *big.Int {
-	h := sha256.New()
-	h.Write(input)
-	return new(big.Int).SetBytes(h.Sum(nil))
-}
-
-// hashCommit computes the sha256 hash over the asn1 representation of a slice
-// of big integers and returns a positive big integer that can be represented
-// with that hash.
-func hashCommit(values []*big.Int, issig bool) *big.Int {
-	// The first element is the number of elements
-	var tmp []interface{}
-	offset := 0
-	if issig {
-		tmp = make([]interface{}, len(values)+2)
-		tmp[0] = true
-		offset++
-	} else {
-		tmp = make([]interface{}, len(values)+1)
-	}
-	tmp[offset] = gobig.NewInt(int64(len(values)))
-	offset++
-	for i, v := range values {
-		tmp[i+offset] = v.Value()
-	}
-	r, _ := asn1.Marshal(tmp)
-
-	h := sha256.New()
-	_, _ = h.Write(r)
-	return new(big.Int).SetBytes(h.Sum(nil))
+	return &Credential{
+		Pk:                   b.pk,
+		Signature:            signature,
+		Attributes:           exponents,
+		NonRevocationWitness: msg.NonRevocationWitness,
+	}, nil
 }
 
 func (b *CredentialBuilder) proveCommitment(U, nonce1 *big.Int) *ProofU {
-	sCommit, _ := RandomBigInt(b.pk.Params.LsCommit)
-	vPrimeCommit, _ := RandomBigInt(b.pk.Params.LvPrimeCommit)
+	sCommit, _ := common.RandomBigInt(b.pk.Params.LsCommit)
+	vPrimeCommit, _ := common.RandomBigInt(b.pk.Params.LvPrimeCommit)
 
 	// Ucommit = S^{vPrimeCommit} * R_0^{sCommit}
 	Sv := new(big.Int).Exp(b.pk.S, vPrimeCommit, b.pk.N)
@@ -186,7 +171,7 @@ func (b *CredentialBuilder) proveCommitment(U, nonce1 *big.Int) *ProofU {
 	Ucommit := new(big.Int).Mul(Sv, R0s)
 	Ucommit.Mod(Ucommit, b.pk.N)
 
-	c := hashCommit([]*big.Int{b.context, U, Ucommit, nonce1}, false)
+	c := common.HashCommit([]*big.Int{b.context, U, Ucommit, nonce1}, false)
 	sResponse := new(big.Int).Mul(c, b.secret)
 	sResponse.Add(sResponse, sCommit)
 
@@ -227,10 +212,10 @@ func (b *CredentialBuilder) PublicKey() *PublicKey {
 }
 
 // Commit commits to the secret (first) attribute using the provided randomizer.
-func (b *CredentialBuilder) Commit(skRandomizer *big.Int) []*big.Int {
-	b.skRandomizer = skRandomizer
+func (b *CredentialBuilder) Commit(randomizers map[string]*big.Int) []*big.Int {
+	b.skRandomizer = randomizers["secretkey"]
 	// vPrimeCommit
-	b.vPrimeCommit, _ = RandomBigInt(b.pk.Params.LvPrimeCommit)
+	b.vPrimeCommit, _ = common.RandomBigInt(b.pk.Params.LvPrimeCommit)
 
 	// U_commit = U_commit * S^{v_prime_commit} * R_0^{s_commit}
 	sv := new(big.Int).Exp(b.pk.S, b.vPrimeCommit, b.pk.N)

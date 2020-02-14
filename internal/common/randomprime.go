@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package gabi
+package common
 
 import (
-	"errors"
 	"io"
+
+	"github.com/go-errors/errors"
 
 	"github.com/privacybydesign/gabi/big"
 )
@@ -26,9 +27,9 @@ var smallPrimes = []uint8{
 // operations.
 var smallPrimesProduct = new(big.Int).SetUint64(16294579238595022365)
 
-// randomPrimeInRange returns a random probable prime in the range [2^start, 2^start + 2^length]
+// RandomPrimeInRange returns a random probable prime in the range [2^start, 2^start + 2^length]
 // This code is an adaption of Go's own Prime function in rand/util.go
-func randomPrimeInRange(rand io.Reader, start, length uint) (p *big.Int, err error) {
+func RandomPrimeInRange(rand io.Reader, start, length uint) (p *big.Int, err error) {
 	if start < 2 {
 		err = errors.New("randomPrimeInRange: prime size must be at least 2-bit")
 		return
@@ -39,8 +40,8 @@ func randomPrimeInRange(rand io.Reader, start, length uint) (p *big.Int, err err
 		b = 8
 	}
 
-	startVal := new(big.Int).Lsh(bigONE, start)
-	endVal := new(big.Int).Lsh(bigONE, length)
+	startVal := new(big.Int).Lsh(big.NewInt(1), start)
+	endVal := new(big.Int).Lsh(big.NewInt(1), length)
 	endVal.Add(endVal, startVal)
 
 	bytes := make([]byte, (length+7)/8)

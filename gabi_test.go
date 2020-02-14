@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/privacybydesign/gabi/big"
+	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/revocation"
 	"github.com/privacybydesign/gabi/safeprime"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -120,8 +123,8 @@ func setupParameters() error {
 		R[i], _ = new(big.Int).SetString(rv, 10)
 	}
 
-	testPrivK = NewPrivateKey(p, q, 0, time.Now().AddDate(1, 0, 0))
-	testPubK = NewPublicKey(n, Z, S, R, 0, time.Now().AddDate(1, 0, 0))
+	testPrivK = NewPrivateKey(p, q, "", 0, time.Now().AddDate(1, 0, 0))
+	testPubK = NewPublicKey(n, Z, S, nil, nil, nil, R, "", 0, time.Now().AddDate(1, 0, 0))
 
 	var err error
 	testPrivK1, err = NewPrivateKeyFromXML(xmlPrivKey1)
@@ -148,29 +151,29 @@ func testPrivateKey(t *testing.T, privk *PrivateKey, strict bool) {
 	assert.True(t, safeprime.ProbablySafePrime(privk.Q, 20), "q in secret key is not prime!")
 	assert.NotZero(t, privk.P.Cmp(privk.Q))
 
-	tmpP := new(big.Int).Mul(privk.PPrime, bigTWO)
-	tmpP.Add(tmpP, bigONE)
+	tmpP := new(big.Int).Mul(privk.PPrime, big.NewInt(2))
+	tmpP.Add(tmpP, big.NewInt(1))
 
 	assert.Equal(t, 0, tmpP.Cmp(privk.P), "p = 2p' + 1 does not hold!")
 
-	tmpQ := new(big.Int).Mul(privk.QPrime, bigTWO)
-	tmpQ.Add(tmpQ, bigONE)
+	tmpQ := new(big.Int).Mul(privk.QPrime, big.NewInt(2))
+	tmpQ.Add(tmpQ, big.NewInt(1))
 
 	assert.Equal(t, 0, tmpQ.Cmp(privk.Q), "q = 2q' + 1 does not hold!")
 
 	// DEAL WITH FACT THAT OLD KEYS DONT SATIFY PROOF REQUIREMENTS
 	if strict {
-		modP := new(big.Int).Mod(privk.P, bigEIGHT)
-		modQ := new(big.Int).Mod(privk.Q, bigEIGHT)
-		modPPrime := new(big.Int).Mod(privk.PPrime, bigEIGHT)
-		modQPrime := new(big.Int).Mod(privk.QPrime, bigEIGHT)
+		modP := new(big.Int).Mod(privk.P, big.NewInt(8))
+		modQ := new(big.Int).Mod(privk.Q, big.NewInt(8))
+		modPPrime := new(big.Int).Mod(privk.PPrime, big.NewInt(8))
+		modQPrime := new(big.Int).Mod(privk.QPrime, big.NewInt(8))
 
-		assert.NotEqual(t, 0, modP.Cmp(bigONE), "p != 1 (mod 8) does not hold!")
-		assert.NotEqual(t, 0, modQ.Cmp(bigONE), "q != 1 (mod 8) does not hold!")
+		assert.NotEqual(t, 0, modP.Cmp(big.NewInt(1)), "p != 1 (mod 8) does not hold!")
+		assert.NotEqual(t, 0, modQ.Cmp(big.NewInt(1)), "q != 1 (mod 8) does not hold!")
 		assert.NotEqual(t, 0, modP.Cmp(modQ), "p != q (mod 8) does not hold!")
 
-		assert.NotEqual(t, 0, modPPrime.Cmp(bigONE), "p' != 1 (mod 8) does not hold!")
-		assert.NotEqual(t, 0, modQPrime.Cmp(bigONE), "q' != 1 (mod 8) does not hold!")
+		assert.NotEqual(t, 0, modPPrime.Cmp(big.NewInt(1)), "p' != 1 (mod 8) does not hold!")
+		assert.NotEqual(t, 0, modQPrime.Cmp(big.NewInt(1)), "q' != 1 (mod 8) does not hold!")
 		assert.NotEqual(t, 0, modPPrime.Cmp(modQPrime), "p' != q' (mod 8) does not hold!")
 	}
 }
@@ -183,8 +186,8 @@ func testPublicKey(t *testing.T, pubk *PublicKey, privk *PrivateKey) {
 	assert.Equal(t, pubk.Params.Ln, uint(pubk.N.BitLen()))
 
 	assert.Equal(t, 0, r.Cmp(pubk.N), "p*q != n")
-	assert.Equal(t, 1, legendreSymbol(pubk.S, privk.P), "S \notin QR_p")
-	assert.Equal(t, 1, legendreSymbol(pubk.S, privk.Q), "S \notin QR_q")
+	assert.Equal(t, 1, common.LegendreSymbol(pubk.S, privk.P), "S \notin QR_p")
+	assert.Equal(t, 1, common.LegendreSymbol(pubk.S, privk.Q), "S \notin QR_q")
 }
 
 func TestTestKeys(t *testing.T) {
@@ -195,38 +198,40 @@ func TestTestKeys(t *testing.T) {
 
 func TestCLSignature(t *testing.T) {
 	m := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
-	sig, err := SignMessageBlock(testPrivK, testPubK, m)
+	sig, err := SignMessageBlock(testPrivK, testPubK, m, nil)
 
 	assert.NoError(t, err)
-	assert.True(t, sig.Verify(testPubK, m), "CLSignature did not verify, whereas it should.")
+	assert.True(t, sig.Verify(testPubK, m, nil), "CLSignature did not verify, whereas it should.")
 	m[0] = big.NewInt(1337)
-	assert.True(t, !sig.Verify(testPubK, m), "CLSignature verifies, whereas it should not.")
+	assert.True(t, !sig.Verify(testPubK, m, nil), "CLSignature verifies, whereas it should not.")
 }
 
 func TestClSignatureRandomize(t *testing.T) {
 	m := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
-	sig, err := SignMessageBlock(testPrivK, testPubK, m)
+	sig, err := SignMessageBlock(testPrivK, testPubK, m, nil)
 	assert.NoError(t, err)
 
-	assert.True(t, sig.Verify(testPubK, m), "CLSignature did not verify, whereas it should.")
+	assert.True(t, sig.Verify(testPubK, m, nil), "CLSignature did not verify, whereas it should.")
 
 	for i := 0; i < 10; i++ {
 		sigRandomized := sig.Randomize(testPubK)
-		assert.True(t, sigRandomized.Verify(testPubK, m), "Randomized CLSignature did not verify, whereas it should.")
+		assert.True(t, sigRandomized.Verify(testPubK, m, nil), "Randomized CLSignature did not verify, whereas it should.")
 	}
 }
 
 func TestProofU(t *testing.T) {
 	keylength := 1024
-	context, _ := RandomBigInt(DefaultSystemParameters[keylength].Lh)
-	nonce1, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
-	nonce2, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
-	secret, _ := RandomBigInt(DefaultSystemParameters[keylength].Lm)
+	context, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lh)
+	nonce1, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	nonce2, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	secret, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lm)
 
 	b := NewCredentialBuilder(testPubK, context, secret, nonce2)
-	proofU := b.CreateProof(createChallenge(context, nonce1, b.Commit(secret), false))
+	proofU := b.CreateProof(createChallenge(context, nonce1, b.Commit(map[string]*big.Int{"secretkey": secret}), false))
 
-	assert.True(t, proofU.VerifyWithChallenge(testPubK, createChallenge(context, nonce1, proofU.ChallengeContribution(testPubK), false)), "ProofU does not verify, whereas it should.")
+	contrib, err := proofU.ChallengeContribution(testPubK)
+	require.NoError(t, err)
+	assert.True(t, proofU.VerifyWithChallenge(testPubK, createChallenge(context, nonce1, contrib, false)), "ProofU does not verify, whereas it should.")
 }
 
 func TestProofULogged(t *testing.T) {
@@ -245,10 +250,10 @@ func TestProofULogged(t *testing.T) {
 
 func TestCommitmentMessage(t *testing.T) {
 
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	nonce2, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	secret, _ := RandomBigInt(testPubK.Params.Lm)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	nonce2, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	secret, _ := common.RandomBigInt(testPubK.Params.Lm)
 
 	b := NewCredentialBuilder(testPubK, context, secret, nonce2)
 	msg := b.CommitToSecretAndProve(nonce1)
@@ -258,17 +263,17 @@ func TestCommitmentMessage(t *testing.T) {
 
 func TestProofS(t *testing.T) {
 	// Silly commitment, content doesn't matter for this test
-	exponent, _ := RandomBigInt(testPubK.Params.Lm)
+	exponent, _ := common.RandomBigInt(testPubK.Params.Lm)
 	U := new(big.Int).Exp(testPubK.S, exponent, testPubK.N)
 
 	// Silly context
-	context, _ := RandomBigInt(testPubK.Params.Lh)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
 
 	// Nonce (normally from the credential recipient)
-	nonce, _ := RandomBigInt(testPubK.Params.Lstatzk)
+	nonce, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
 
 	issuer := NewIssuer(testPrivK, testPubK, context)
-	sig, err := issuer.signCommitmentAndAttributes(U, testAttributes1)
+	sig, err := issuer.signCommitmentAndAttributes(U, testAttributes1, nil)
 	assert.NoError(t, err)
 
 	proof := issuer.proveSignature(sig, nonce)
@@ -302,52 +307,53 @@ func TestProofSLogged(t *testing.T) {
 }
 
 func TestSignatureMessage(t *testing.T) {
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	nonce2, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	secret, _ := RandomBigInt(testPubK.Params.Lm)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	nonce2, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	secret, _ := common.RandomBigInt(testPubK.Params.Lm)
 
 	b := NewCredentialBuilder(testPubK, context, secret, nonce2)
 	commitMsg := b.CommitToSecretAndProve(nonce1)
 
 	issuer := NewIssuer(testPrivK, testPubK, context)
-	_, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nonce2)
+	_, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nil, nonce2)
 	assert.NoError(t, err, "Error in IssueSignature")
 }
 
 func TestFullIssuance(t *testing.T) {
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	nonce2, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	secret, _ := RandomBigInt(testPubK.Params.Lm)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	nonce2, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	secret, _ := common.RandomBigInt(testPubK.Params.Lm)
 	b := NewCredentialBuilder(testPubK, context, secret, nonce2)
 	commitMsg := b.CommitToSecretAndProve(nonce1)
 
 	issuer := NewIssuer(testPrivK, testPubK, context)
-	msg, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nonce2)
+	msg, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nil, nonce2)
 	assert.NoError(t, err, "Error in IssueSignature")
 	_, err = b.ConstructCredential(msg, testAttributes1)
 	assert.NoError(t, err, "Error in IssueSignature")
 }
 
 func TestShowingProof(t *testing.T) {
-	signature, err := SignMessageBlock(testPrivK, testPubK, testAttributes1)
+	signature, err := SignMessageBlock(testPrivK, testPubK, testAttributes1, nil)
 	assert.NoError(t, err, "Error producing CL signature.")
 	cred := &Credential{Pk: testPubK, Attributes: testAttributes1, Signature: signature}
 	disclosed := []int{1, 2}
 
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
 
-	proof := cred.CreateDisclosureProof(disclosed, context, nonce1)
+	proof, err := cred.CreateDisclosureProof(disclosed, false, context, nonce1)
+	require.NoError(t, err)
 
 	assert.True(t, proof.Verify(testPubK, context, nonce1, false), "Proof of disclosure did not verify, whereas it should.")
 }
 
 func TestCombinedShowingProof(t *testing.T) {
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	secret, _ := RandomBigInt(testPubK.Params.Lm)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	secret, _ := common.RandomBigInt(testPubK.Params.Lm)
 
 	issuer1 := NewIssuer(testPrivK1, testPubK1, context)
 	cred1 := createCredential(t, context, secret, issuer1)
@@ -355,9 +361,11 @@ func TestCombinedShowingProof(t *testing.T) {
 	issuer2 := NewIssuer(testPrivK2, testPubK2, context)
 	cred2 := createCredential(t, context, secret, issuer2)
 
-	builders := ProofBuilderList([]ProofBuilder{
-		cred1.CreateDisclosureProofBuilder([]int{1, 2}),
-		cred2.CreateDisclosureProofBuilder([]int{1, 3})})
+	b1, err := cred1.CreateDisclosureProofBuilder([]int{1, 2}, false)
+	require.NoError(t, err)
+	b2, err := cred2.CreateDisclosureProofBuilder([]int{1, 3}, false)
+	require.NoError(t, err)
+	builders := ProofBuilderList([]ProofBuilder{b1, b2})
 	prooflist := builders.BuildProofList(context, nonce1, false)
 
 	assert.True(t, prooflist.Verify([]*PublicKey{issuer1.Pk, issuer2.Pk}, context, nonce1, false, nil), "Prooflist does not verify whereas it should!")
@@ -399,41 +407,42 @@ func TestShowingProofLogged(t *testing.T) {
 }
 
 func TestFullIssuanceAndShowing(t *testing.T) {
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	nonce2, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	secret, _ := RandomBigInt(testPubK.Params.Lm)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	nonce2, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	secret, _ := common.RandomBigInt(testPubK.Params.Lm)
 
 	// Issuance
 	builder := NewCredentialBuilder(testPubK, context, secret, nonce2)
 	commitMsg := builder.CommitToSecretAndProve(nonce1)
 	issuer := NewIssuer(testPrivK, testPubK, context)
-	sigMsg, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nonce2)
+	sigMsg, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nil, nonce2)
 	assert.NoError(t, err, "Error in IssueSignature")
 
 	cred, err := builder.ConstructCredential(sigMsg, testAttributes1)
 	assert.NoError(t, err, "Error in credential construction")
 
 	// Showing
-	n1, _ := RandomBigInt(testPubK.Params.Lstatzk)
+	n1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
 	disclosed := []int{1, 2}
 
-	proof := cred.CreateDisclosureProof(disclosed, context, n1)
+	proof, err := cred.CreateDisclosureProof(disclosed, false, context, n1)
+	require.NoError(t, err)
 	assert.True(t, proof.Verify(testPubK, context, n1, false), "Proof of disclosure does not verify, whereas it should.")
 }
 
 func TestFullBoundIssuanceAndShowing(t *testing.T) {
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	nonce2, _ := RandomBigInt(testPubK.Params.Lstatzk)
-	secret, _ := RandomBigInt(testPubK.Params.Lm)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	nonce2, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	secret, _ := common.RandomBigInt(testPubK.Params.Lm)
 
 	// First create a credential
 	cb1 := NewCredentialBuilder(testPubK, context, secret, nonce2)
 	commitMsg := cb1.CommitToSecretAndProve(nonce1)
 
 	issuer1 := NewIssuer(testPrivK, testPubK, context)
-	ism, err := issuer1.IssueSignature(commitMsg.U, testAttributes1, nonce2)
+	ism, err := issuer1.IssueSignature(commitMsg.U, testAttributes1, nil, nonce2)
 	assert.NoError(t, err, "Error creating Issue Signature")
 
 	cred1, err := cb1.ConstructCredential(ism, testAttributes1)
@@ -444,22 +453,25 @@ func TestFullBoundIssuanceAndShowing(t *testing.T) {
 	cb2 := NewCredentialBuilder(testPubK, context, secret, nonce2)
 	issuer2 := NewIssuer(testPrivK, testPubK, context)
 
-	builders := ProofBuilderList([]ProofBuilder{cred1.CreateDisclosureProofBuilder([]int{1, 2}), cb2})
+	db, err := cred1.CreateDisclosureProofBuilder([]int{1, 2}, false)
+	require.NoError(t, err)
+	builders := ProofBuilderList([]ProofBuilder{db, cb2})
 	prooflist := builders.BuildProofList(context, nonce1, false)
 
 	commitMsg2 := cb2.CreateIssueCommitmentMessage(prooflist)
 
 	assert.True(t, commitMsg2.Proofs.Verify([]*PublicKey{testPubK, testPubK}, context, nonce1, false, nil), "Proofs in commit message do not verify!")
 
-	msg, err := issuer2.IssueSignature(commitMsg2.U, testAttributes1, nonce2)
+	msg, err := issuer2.IssueSignature(commitMsg2.U, testAttributes1, nil, nonce2)
 	assert.NoError(t, err, "Error creating Issue Signature")
 	cred2, err := cb2.ConstructCredential(msg, testAttributes1)
 	assert.NoError(t, err, "Error creating credential")
 
 	// Showing
-	nonce1s, _ := RandomBigInt(testPubK.Params.Lstatzk)
+	nonce1s, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
 	disclosedAttributes := []int{1, 3}
-	proof := cred2.CreateDisclosureProof(disclosedAttributes, context, nonce1s)
+	proof, err := cred2.CreateDisclosureProof(disclosedAttributes, false, context, nonce1s)
+	require.NoError(t, err)
 	assert.True(t, proof.Verify(testPubK, context, nonce1s, false), "Proof of disclosure did not verify, whereas it should.")
 }
 
@@ -477,7 +489,7 @@ func TestLegendreSymbol(t *testing.T) {
 		{testPubK.S, testPrivK.Q, 1},
 	}
 	for _, tv := range testValues {
-		s := legendreSymbol(tv.a, tv.b)
+		s := common.LegendreSymbol(tv.a, tv.b)
 		assert.Equalf(t, s, tv.r, "Wrong Legendre symbol for (%v, %v). Expected %d, got %v.", tv.a, tv.b, tv.r, s)
 	}
 }
@@ -497,7 +509,7 @@ func TestGenerateKeyPair(t *testing.T) {
 	}
 
 	// Using the toy parameters, generate a bunch of keys
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 1; i++ {
 		privk, pubk, err := GenerateKeyPair(DefaultSystemParameters[256], 6, 0, time.Now().AddDate(1, 0, 0))
 		assert.NoError(t, err, "Error generating key pair")
 		testPrivateKey(t, privk, true)
@@ -505,10 +517,10 @@ func TestGenerateKeyPair(t *testing.T) {
 	}
 
 	// Generate one key of the smallest supported sizes
-	privk, pubk, err := GenerateKeyPair(DefaultSystemParameters[1024], 6, 0, time.Now().AddDate(1, 0, 0))
-	assert.NoError(t, err, "Error generating key pair")
-	testPrivateKey(t, privk, true)
-	testPublicKey(t, pubk, privk)
+	//privk, pubk, err := GenerateKeyPair(DefaultSystemParameters[1024], 6, 0, time.Now().AddDate(1, 0, 0))
+	//assert.NoError(t, err, "Error generating key pair")
+	//testPrivateKey(t, privk, true)
+	//testPublicKey(t, pubk, privk)
 }
 
 func genRandomIssuer(t *testing.T, context *big.Int) *Issuer {
@@ -522,12 +534,12 @@ func genRandomIssuer(t *testing.T, context *big.Int) *Issuer {
 func createCredential(t *testing.T, context, secret *big.Int, issuer *Issuer) *Credential {
 	// First create a credential
 	keylength := 1024
-	nonce1, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
-	nonce2, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	nonce1, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	nonce2, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
 	cb := NewCredentialBuilder(issuer.Pk, context, secret, nonce2)
 	commitMsg := cb.CommitToSecretAndProve(nonce1)
 
-	ism, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nonce2)
+	ism, err := issuer.IssueSignature(commitMsg.U, testAttributes1, nil, nonce2)
 	assert.NoError(t, err, "Error creating Issue Signature")
 
 	cred, err := cb.ConstructCredential(ism, testAttributes1)
@@ -537,9 +549,9 @@ func createCredential(t *testing.T, context, secret *big.Int, issuer *Issuer) *C
 
 func TestFullBoundIssuanceAndShowingRandomIssuers(t *testing.T) {
 	keylength := 1024
-	context, _ := RandomBigInt(DefaultSystemParameters[keylength].Lh)
-	secret, _ := RandomBigInt(DefaultSystemParameters[keylength].Lm)
-	nonce2, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	context, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lh)
+	secret, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lm)
+	nonce2, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
 
 	// First create a single credential for an issuer
 	issuer1 := NewIssuer(testPrivK1, testPubK1, context)
@@ -550,33 +562,36 @@ func TestFullBoundIssuanceAndShowingRandomIssuers(t *testing.T) {
 	issuer2 := NewIssuer(testPrivK2, testPubK2, context)
 	cb2 := NewCredentialBuilder(issuer2.Pk, context, secret, nonce2)
 
-	nonce1, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
-	builders := ProofBuilderList([]ProofBuilder{cred1.CreateDisclosureProofBuilder([]int{1, 2}), cb2})
+	nonce1, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	db, err := cred1.CreateDisclosureProofBuilder([]int{1, 2}, false)
+	require.NoError(t, err)
+	builders := ProofBuilderList([]ProofBuilder{db, cb2})
 	prooflist := builders.BuildProofList(context, nonce1, false)
 
 	commitMsg := cb2.CreateIssueCommitmentMessage(prooflist)
 
 	assert.True(t, commitMsg.Proofs.Verify([]*PublicKey{issuer1.Pk, issuer2.Pk}, context, nonce1, false, nil), "Proofs in commit message do not verify!")
 
-	msg, err := issuer2.IssueSignature(commitMsg.U, testAttributes2, nonce2)
+	msg, err := issuer2.IssueSignature(commitMsg.U, testAttributes2, nil, nonce2)
 	assert.NoError(t, err, "Error creating Issue Signature")
 	cred2, err := cb2.ConstructCredential(msg, testAttributes2)
 	assert.NoError(t, err, "Error creating credential")
 
 	// Showing
-	nonce1s, _ := RandomBigInt(issuer2.Pk.Params.Lstatzk)
+	nonce1s, _ := common.RandomBigInt(issuer2.Pk.Params.Lstatzk)
 	disclosedAttributes := []int{1, 3}
-	proof := cred2.CreateDisclosureProof(disclosedAttributes, context, nonce1s)
+	proof, err := cred2.CreateDisclosureProof(disclosedAttributes, false, context, nonce1s)
+	require.NoError(t, err)
 	assert.True(t, proof.Verify(issuer2.Pk, context, nonce1s, false), "Proof of disclosure did not verify, whereas it should.")
 }
 
 func TestWronglyBoundIssuanceAndShowingWithDifferentIssuers(t *testing.T) {
 	keylength := 1024
-	context, _ := RandomBigInt(DefaultSystemParameters[keylength].Lh)
+	context, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lh)
 	// Use two different secrets for the credentials, this should fail eventually
-	secret1, _ := RandomBigInt(DefaultSystemParameters[keylength].Lm)
-	secret2, _ := RandomBigInt(DefaultSystemParameters[keylength].Lm)
-	nonce2, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	secret1, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lm)
+	secret2, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lm)
+	nonce2, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
 
 	// First create a single credential for an issuer
 	issuer1 := NewIssuer(testPrivK1, testPubK1, context)
@@ -587,8 +602,10 @@ func TestWronglyBoundIssuanceAndShowingWithDifferentIssuers(t *testing.T) {
 	issuer2 := NewIssuer(testPrivK2, testPubK2, context)
 	cb2 := NewCredentialBuilder(issuer2.Pk, context, secret2, nonce2)
 
-	nonce1, _ := RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
-	builders := ProofBuilderList([]ProofBuilder{cred1.CreateDisclosureProofBuilder([]int{1, 2}), cb2})
+	nonce1, _ := common.RandomBigInt(DefaultSystemParameters[keylength].Lstatzk)
+	db, err := cred1.CreateDisclosureProofBuilder([]int{1, 2}, false)
+	require.NoError(t, err)
+	builders := ProofBuilderList([]ProofBuilder{db, cb2})
 	prooflist := builders.BuildProofList(context, nonce1, false)
 
 	commitMsg := cb2.CreateIssueCommitmentMessage(prooflist)
@@ -602,20 +619,111 @@ func TestBigAttribute(t *testing.T) {
 		new(big.Int).SetBytes([]byte("two")),
 		new(big.Int).SetBytes([]byte("This is a very long attribute: its size of 132 bytes exceeds the maximum message length of all currently supported public key sizes.")),
 	}
-	signature, err := SignMessageBlock(testPrivK, testPubK, attrs)
+	signature, err := SignMessageBlock(testPrivK, testPubK, attrs, nil)
 	assert.NoError(t, err, "Error producing CL signature.")
 	cred := &Credential{Pk: testPubK, Attributes: attrs, Signature: signature}
-	assert.True(t, signature.Verify(testPubK, attrs), "Failed to create CL signature over large attribute")
+	assert.True(t, signature.Verify(testPubK, attrs, nil), "Failed to create CL signature over large attribute")
 
-	context, _ := RandomBigInt(testPubK.Params.Lh)
-	nonce1, _ := RandomBigInt(testPubK.Params.Lstatzk)
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
 
 	// Don't disclose large attribute
-	proof := cred.CreateDisclosureProof([]int{1}, context, nonce1)
+	proof, err := cred.CreateDisclosureProof([]int{1}, false, context, nonce1)
+	require.NoError(t, err)
 	assert.True(t, proof.Verify(testPubK, context, nonce1, false), "Failed to verify ProofD with large undisclosed attribute")
 	// Disclose large attribute
-	proof = cred.CreateDisclosureProof([]int{2}, context, nonce1)
+	proof, err = cred.CreateDisclosureProof([]int{2}, false, context, nonce1)
+	require.NoError(t, err)
 	assert.True(t, proof.Verify(testPubK, context, nonce1, false), "Failed to verify ProofD with large undisclosed attribute")
+}
+
+func setupRevocation(t *testing.T) (*revocation.PrivateKey, *revocation.PublicKey, *revocation.Witness, *revocation.Update, *revocation.Accumulator) {
+	if !testPrivK.RevocationSupported() {
+		require.NoError(t, GenerateRevocationKeypair(testPrivK, testPubK))
+	}
+
+	revkey, err := testPrivK.RevocationKey()
+	require.NoError(t, err)
+	update, err := revocation.NewAccumulator(revkey)
+	require.NoError(t, err)
+
+	revpk, err := testPubK.RevocationKey()
+	require.NoError(t, err)
+	acc, err := update.SignedAccumulator.UnmarshalVerify(revpk)
+
+	witness, err := testPrivK.RevocationGenerateWitness(acc)
+	require.NoError(t, err)
+	witness.SignedAccumulator = update.SignedAccumulator
+	require.Zero(t, new(big.Int).Exp(witness.U, witness.E, testPubK.N).Cmp(acc.Nu))
+
+	return revkey, revpk, witness, update, acc
+}
+
+func TestNotRevoked(t *testing.T) {
+	_, _, witness, _, _ := setupRevocation(t)
+
+	// Issuance
+	signature, err := SignMessageBlock(testPrivK, testPubK, testAttributes1, witness.E)
+	require.NoError(t, err)
+	require.True(t, signature.Verify(testPubK, testAttributes1, witness.E))
+
+	cred := &Credential{
+		Signature:            signature,
+		Pk:                   testPubK,
+		Attributes:           testAttributes1,
+		NonRevocationWitness: witness,
+	}
+	require.NoError(t, cred.NonrevPrepareCache())
+
+	// showing
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+
+	proofd, err := cred.CreateDisclosureProof([]int{1, 2}, true, context, nonce)
+	require.NoError(t, err)
+	require.True(t, ProofList{proofd}.Verify([]*PublicKey{testPubK}, context, nonce, false, nil))
+}
+
+func TestRevoked(t *testing.T) {
+	revkey, revpk, witness, update, acc := setupRevocation(t)
+
+	// Issuance
+	signature, err := SignMessageBlock(testPrivK, testPubK, testAttributes1, witness.E)
+	require.NoError(t, err)
+	require.True(t, signature.Verify(testPubK, testAttributes1, witness.E))
+
+	acc, event, err := acc.Remove(revkey, witness.E, update.Events[0])
+	require.NoError(t, err)
+	update, err = revocation.NewUpdate(revkey, acc, []*revocation.Event{event})
+	require.NoError(t, err)
+
+	// Try to update Accumulator to latest update (where the witness.E is removed)
+	require.Equal(t, revocation.ErrorRevoked, witness.Update(revpk, update))
+}
+
+func TestFullIssueAndShowWithRevocation(t *testing.T) {
+	_, _, witness, _, _ := setupRevocation(t)
+
+	// Issuance
+	context, _ := common.RandomBigInt(testPubK.Params.Lh)
+	nonce1, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	nonce2, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	secret, _ := common.RandomBigInt(testPubK.Params.Lm)
+	b := NewCredentialBuilder(testPubK, context, secret, nonce2)
+	commitMsg := b.CommitToSecretAndProve(nonce1)
+
+	issuer := NewIssuer(testPrivK, testPubK, context)
+	msg, err := issuer.IssueSignature(commitMsg.U, testAttributes1, witness, nonce2)
+	require.NoError(t, err, "Error in IssueSignature")
+	cred, err := b.ConstructCredential(msg, testAttributes1)
+	require.NoError(t, err, "Error in ConstructCredential")
+
+	// Showing
+	nonce1s, _ := common.RandomBigInt(testPubK.Params.Lstatzk)
+	disclosedAttributes := []int{1, 3}
+	proofd, err := cred.CreateDisclosureProof(disclosedAttributes, true, context, nonce1s)
+	require.NoError(t, err)
+	assert.True(t, proofd.Verify(testPubK, context, nonce1s, false), "Proof of disclosure did not verify, whereas it should.")
 }
 
 // TODO: tests to add:

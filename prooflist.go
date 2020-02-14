@@ -5,15 +5,15 @@
 package gabi
 
 import (
-	"errors"
-
+	"github.com/go-errors/errors"
 	"github.com/privacybydesign/gabi/big"
+	"github.com/privacybydesign/gabi/internal/common"
 )
 
 // ProofBuilder is an interface for a proof builder. That is, an object to hold
 // the state to build a list of bounded proofs (see ProofList).
 type ProofBuilder interface {
-	Commit(skRandomizer *big.Int) []*big.Int
+	Commit(randomizers map[string]*big.Int) []*big.Int
 	CreateProof(challenge *big.Int) Proof
 	PublicKey() *PublicKey
 	MergeProofPCommitment(commitment *ProofPCommitment)
@@ -53,12 +53,16 @@ func (pl ProofList) GetFirstProofU() (*ProofU, error) {
 
 // challengeContributions collects and returns all the challenge contributions
 // of the proofs contained in the proof list.
-func (pl ProofList) challengeContributions(publicKeys []*PublicKey, context, nonce *big.Int) []*big.Int {
+func (pl ProofList) challengeContributions(publicKeys []*PublicKey, context, nonce *big.Int) ([]*big.Int, error) {
 	contributions := make([]*big.Int, 0, len(pl)*2)
 	for i, proof := range pl {
-		contributions = append(contributions, proof.ChallengeContribution(publicKeys[i])...)
+		contrib, err := proof.ChallengeContribution(publicKeys[i])
+		if err != nil {
+			return nil, err
+		}
+		contributions = append(contributions, contrib...)
 	}
-	return contributions
+	return contributions, nil
 }
 
 // Verify returns true when all the proofs inside verify.
@@ -83,7 +87,10 @@ func (pl ProofList) Verify(publicKeys []*PublicKey, context, nonce *big.Int, iss
 	// During verification of the proofs we keep track of their secret key responses in this map.
 	secretkeyResponses := make(map[string]*big.Int)
 
-	contributions := pl.challengeContributions(publicKeys, context, nonce)
+	contributions, err := pl.challengeContributions(publicKeys, context, nonce)
+	if err != nil {
+		return false
+	}
 	expectedChallenge := createChallenge(context, nonce, contributions, issig)
 
 	// If keyshareServers == nil then we never update this variable,
@@ -116,11 +123,11 @@ func (builders ProofBuilderList) Challenge(context, nonce *big.Int, issig bool) 
 	// So we should take it, and hence also its commitment, to fit within the smallest size -
 	// otherwise it will be too big so that we cannot perform the range proof showing
 	// that it is not too big.
-	skCommitment, _ := RandomBigInt(DefaultSystemParameters[1024].LmCommit)
+	skCommitment, _ := common.RandomBigInt(DefaultSystemParameters[1024].LmCommit)
 
 	commitmentValues := make([]*big.Int, 0, len(builders)*2)
 	for _, pb := range builders {
-		commitmentValues = append(commitmentValues, pb.Commit(skCommitment)...)
+		commitmentValues = append(commitmentValues, pb.Commit(map[string]*big.Int{"secretkey": skCommitment})...)
 	}
 
 	// Create a shared challenge

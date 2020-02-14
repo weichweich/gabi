@@ -5,6 +5,7 @@
 package gabi
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -13,9 +14,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-errors/errors"
 	"github.com/privacybydesign/gabi/big"
-
+	"github.com/privacybydesign/gabi/internal/common"
+	"github.com/privacybydesign/gabi/revocation"
 	"github.com/privacybydesign/gabi/safeprime"
+	"github.com/privacybydesign/gabi/signed"
 )
 
 const (
@@ -34,17 +38,22 @@ type PrivateKey struct {
 	Q          *big.Int `xml:"Elements>q"`
 	PPrime     *big.Int `xml:"Elements>pPrime"`
 	QPrime     *big.Int `xml:"Elements>qPrime"`
+	ECDSA      string
+
+	revocationKey *revocation.PrivateKey
 }
 
 // NewPrivateKey creates a new issuer private key using the provided parameters.
-func NewPrivateKey(p, q *big.Int, counter uint, expiryDate time.Time) *PrivateKey {
-	sk := PrivateKey{P: p, Q: q, PPrime: new(big.Int), QPrime: new(big.Int), Counter: counter, ExpiryDate: expiryDate.Unix()}
-
-	sk.PPrime.Sub(p, bigONE)
-	sk.PPrime.Rsh(sk.PPrime, 1)
-
-	sk.QPrime.Sub(q, bigONE)
-	sk.QPrime.Rsh(sk.QPrime, 1)
+func NewPrivateKey(p, q *big.Int, ecdsa string, counter uint, expiryDate time.Time) *PrivateKey {
+	sk := PrivateKey{
+		P:          p,
+		Q:          q,
+		PPrime:     new(big.Int).Rsh(p, 1),
+		QPrime:     new(big.Int).Rsh(q, 1),
+		Counter:    counter,
+		ExpiryDate: expiryDate.Unix(),
+		ECDSA:      ecdsa,
+	}
 
 	return &sk
 }
@@ -79,6 +88,14 @@ func NewPrivateKeyFromFile(filename string) (*PrivateKey, error) {
 		return nil, err
 	}
 	return privk, nil
+}
+
+func (privk *PrivateKey) RevocationGenerateWitness(accumulator *revocation.Accumulator) (*revocation.Witness, error) {
+	revkey, err := privk.RevocationKey()
+	if err != nil {
+		return nil, err
+	}
+	return revocation.RandomWitness(revkey, accumulator)
 }
 
 // Print prints the key to stdout.
@@ -121,6 +138,61 @@ func (privk *PrivateKey) WriteToFile(filename string, forceOverwrite bool) (int6
 	defer f.Close()
 
 	return privk.WriteTo(f)
+}
+
+func (privk *PrivateKey) RevocationKey() (*revocation.PrivateKey, error) {
+	if privk.revocationKey == nil {
+		if !privk.RevocationSupported() {
+			return nil, errors.New("private key does not support revocation")
+		}
+		bts, err := base64.StdEncoding.DecodeString(privk.ECDSA)
+		if err != nil {
+			return nil, err
+		}
+		key, err := signed.UnmarshalPrivateKey(bts)
+		if err != nil {
+			return nil, err
+		}
+		privk.revocationKey = &revocation.PrivateKey{
+			Counter: privk.Counter,
+			ECDSA:   key,
+			P:       privk.PPrime,
+			Q:       privk.QPrime,
+			N:       new(big.Int).Mul(privk.P, privk.Q),
+		}
+	}
+	return privk.revocationKey, nil
+}
+
+func (privk *PrivateKey) RevocationSupported() bool {
+	return len(privk.ECDSA) > 0
+}
+
+func GenerateRevocationKeypair(privk *PrivateKey, pubk *PublicKey) error {
+	if pubk.RevocationSupported() || privk.RevocationSupported() {
+		return errors.New("revocation parameters already present")
+	}
+
+	key, err := signed.GenerateKey()
+	if err != nil {
+		return err
+	}
+	dsabts, err := signed.MarshalPrivateKey(key)
+	if err != nil {
+		return err
+	}
+	pubdsabts, err := signed.MarshalPublicKey(&key.PublicKey)
+	if err != nil {
+		return err
+	}
+
+	privk.ECDSA = base64.StdEncoding.EncodeToString(dsabts)
+	pubk.ECDSA = base64.StdEncoding.EncodeToString(pubdsabts)
+	pubk.T = common.RandomQR(pubk.N)
+	pubk.G = common.RandomQR(pubk.N)
+	pubk.H = common.RandomQR(pubk.N)
+
+	return nil
 }
 
 // xmlBases is an auxiliary struct to encode/decode the odd way bases are
@@ -215,14 +287,20 @@ type PublicKey struct {
 	N           *big.Int          `xml:"Elements>n"` // Modulus n
 	Z           *big.Int          `xml:"Elements>Z"` // Generator Z
 	S           *big.Int          `xml:"Elements>S"` // Generator S
+	G           *big.Int          `xml:"Elements>G"` // Generator G for revocation
+	H           *big.Int          `xml:"Elements>H"` // Generator H for revocation
+	T           *big.Int          `xml:"Elements>T"` // Generator T for revocation
 	R           Bases             `xml:"Elements>Bases"`
 	EpochLength EpochLength       `xml:"Features"`
 	Params      *SystemParameters `xml:"-"`
 	Issuer      string            `xml:"-"`
+	ECDSA       string
+
+	revocationKey *revocation.PublicKey
 }
 
 // NewPublicKey creates and returns a new public key based on the provided parameters.
-func NewPublicKey(N, Z, S *big.Int, R []*big.Int, counter uint, expiryDate time.Time) *PublicKey {
+func NewPublicKey(N, Z, S, G, H, T *big.Int, R []*big.Int, ecdsa string, counter uint, expiryDate time.Time) *PublicKey {
 	return &PublicKey{
 		Counter:     counter,
 		ExpiryDate:  expiryDate.Unix(),
@@ -230,8 +308,12 @@ func NewPublicKey(N, Z, S *big.Int, R []*big.Int, counter uint, expiryDate time.
 		Z:           Z,
 		S:           S,
 		R:           R,
+		G:           G,
+		H:           H,
+		T:           T,
 		EpochLength: DefaultEpochLength,
 		Params:      DefaultSystemParameters[N.BitLen()],
+		ECDSA:       ecdsa,
 	}
 }
 
@@ -278,6 +360,35 @@ func NewPublicKeyFromFile(filename string) (*PublicKey, error) {
 	}
 	pubk.Params = DefaultSystemParameters[pubk.N.BitLen()]
 	return pubk, nil
+}
+
+func (pubk *PublicKey) RevocationKey() (*revocation.PublicKey, error) {
+	if pubk.revocationKey == nil {
+		if !pubk.RevocationSupported() {
+			return nil, errors.New("public key does not support revocation")
+		}
+		bts, err := base64.StdEncoding.DecodeString(pubk.ECDSA)
+		if err != nil {
+			return nil, err
+		}
+		dsakey, err := signed.UnmarshalPublicKey(bts)
+		if err != nil {
+			return nil, err
+		}
+		g := revocation.NewQrGroup(pubk.N)
+		g.G = pubk.G
+		g.H = pubk.H
+		pubk.revocationKey = &revocation.PublicKey{
+			Counter: pubk.Counter,
+			Group:   &g,
+			ECDSA:   dsakey,
+		}
+	}
+	return pubk.revocationKey, nil
+}
+
+func (pubk *PublicKey) RevocationSupported() bool {
+	return pubk.G != nil && pubk.H != nil && pubk.T != nil && len(pubk.ECDSA) > 0
 }
 
 // Print prints the key to stdout.
@@ -328,7 +439,7 @@ func findMatch(safeprimes []*big.Int, param *SystemParameters, p *big.Int,
 	n, pMod8, qMod8 *big.Int, // temp vars allocated by caller
 ) *big.Int {
 	for _, q := range safeprimes {
-		if uint(n.Mul(p, q).BitLen()) == param.Ln && pMod8.Mod(p, bigEIGHT).Cmp(qMod8.Mod(q, bigEIGHT)) != 0 {
+		if uint(n.Mul(p, q).BitLen()) == param.Ln && pMod8.Mod(p, big.NewInt(8)).Cmp(qMod8.Mod(q, big.NewInt(8))) != 0 {
 			return q
 		}
 	}
@@ -354,9 +465,9 @@ loop: // we need this label to continue the for loop from within the select belo
 		select { // wait for and then handle an incoming bigint or error, whichever comes first
 
 		case p = <-ints:
-			pPrimeMod8.Mod(pPrime.Rsh(p, 1), bigEIGHT)
+			pPrimeMod8.Mod(pPrime.Rsh(p, 1), big.NewInt(8))
 			// p is our candidate safeprime, set p' = (p-1)/2. Check that p' mod 8 != 1
-			if pPrimeMod8.Cmp(bigONE) == 0 {
+			if pPrimeMod8.Cmp(big.NewInt(1)) == 0 {
 				continue loop
 			}
 			// If we have earlier found other candidates, see if any pair of them fits all requirements
@@ -400,7 +511,7 @@ func GenerateKeyPair(param *SystemParameters, numAttributes int, counter uint, e
 
 	var s *big.Int
 	for {
-		s, err = RandomBigInt(param.Ln)
+		s, err = common.RandomBigInt(param.Ln)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -408,7 +519,7 @@ func GenerateKeyPair(param *SystemParameters, numAttributes int, counter uint, e
 		if s.Cmp(pubk.N) > 0 {
 			continue
 		}
-		if legendreSymbol(s, priv.P) == 1 && legendreSymbol(s, priv.Q) == 1 {
+		if common.LegendreSymbol(s, priv.P) == 1 && common.LegendreSymbol(s, priv.Q) == 1 {
 			break
 		}
 	}
@@ -419,8 +530,8 @@ func GenerateKeyPair(param *SystemParameters, numAttributes int, counter uint, e
 	primeSize := param.Ln / 2
 	var x *big.Int
 	for {
-		x, _ = RandomBigInt(primeSize)
-		if x.Cmp(bigTWO) > 0 && x.Cmp(pubk.N) < 0 {
+		x, _ = common.RandomBigInt(primeSize)
+		if x.Cmp(big.NewInt(2)) > 0 && x.Cmp(pubk.N) < 0 {
 			break
 		}
 	}
@@ -435,13 +546,17 @@ func GenerateKeyPair(param *SystemParameters, numAttributes int, counter uint, e
 
 		var x *big.Int
 		for {
-			x, _ = RandomBigInt(primeSize)
-			if x.Cmp(bigTWO) > 0 && x.Cmp(pubk.N) < 0 {
+			x, _ = common.RandomBigInt(primeSize)
+			if x.Cmp(big.NewInt(2)) > 0 && x.Cmp(pubk.N) < 0 {
 				break
 			}
 		}
 		// Compute R_i = S^x mod n
 		pubk.R[i].Exp(pubk.S, x, pubk.N)
+	}
+
+	if err = GenerateRevocationKeypair(priv, pubk); err != nil {
+		return nil, nil, err
 	}
 
 	return priv, pubk, nil
