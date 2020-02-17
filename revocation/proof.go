@@ -305,7 +305,7 @@ func (w *Witness) Update(pk *PublicKey, update *Update) error {
 		return errors.New("nonrevocation witness invalidated by update")
 	}
 
-	// Update witness state only now after all possible errors have not occured
+	// Update witness state only now after all possible errors have not occurred
 	w.U = newU
 	w.SignedAccumulator = update.SignedAccumulator
 	w.Updated = time.Unix(acc.Time, 0)
@@ -493,5 +493,5 @@ func newWitness(sk *PrivateKey, acc *Accumulator, e *big.Int) (*Witness, error) 
 		return nil, errors.New("failed to compute modular inverse")
 	}
 	u := new(big.Int).Exp(acc.Nu, eInverse, sk.N)
-	return &Witness{U: u, E: e}, nil
+	return &Witness{U: u, E: e, Updated: time.Unix(acc.Time, 0)}, nil
 }
