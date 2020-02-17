@@ -229,7 +229,7 @@ func TestWitnessUpdate(t *testing.T) {
 
 	// updating against an update with no events of the same index increases witness's accumulator time
 	newacc := *witness.SignedAccumulator.Accumulator
-	newacc.Time = time.Now().Unix()
+	newacc.Time = time.Now()
 	update, err = NewUpdate(sk, &newacc, nil)
 	require.NoError(t, err)
 	i = witness.SignedAccumulator.Accumulator.Index

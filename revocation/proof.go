@@ -2,12 +2,11 @@ package revocation
 
 import (
 	"crypto/rand"
-	"time"
 
 	"github.com/go-errors/errors"
 	"github.com/privacybydesign/gabi/big"
-	"github.com/privacybydesign/gabi/pkg/common"
 	"github.com/privacybydesign/gabi/keyproof"
+	"github.com/privacybydesign/gabi/pkg/common"
 )
 
 /*
@@ -276,7 +275,7 @@ func (w *Witness) Update(pk *PublicKey, update *Update) error {
 	}
 	if acc.Index == w.SignedAccumulator.Accumulator.Index {
 		*w.SignedAccumulator = *update.SignedAccumulator
-		w.Updated = time.Unix(acc.Time, 0)
+		w.Updated = acc.Time
 		return nil
 	}
 	if len(update.Events) == 0 {
@@ -308,7 +307,7 @@ func (w *Witness) Update(pk *PublicKey, update *Update) error {
 	// Update witness state only now after all possible errors have not occurred
 	w.U = newU
 	w.SignedAccumulator = update.SignedAccumulator
-	w.Updated = time.Unix(acc.Time, 0)
+	w.Updated = acc.Time
 
 	return nil
 }
@@ -493,5 +492,5 @@ func newWitness(sk *PrivateKey, acc *Accumulator, e *big.Int) (*Witness, error) 
 		return nil, errors.New("failed to compute modular inverse")
 	}
 	u := new(big.Int).Exp(acc.Nu, eInverse, sk.N)
-	return &Witness{U: u, E: e, Updated: time.Unix(acc.Time, 0)}, nil
+	return &Witness{U: u, E: e, Updated: acc.Time}, nil
 }
